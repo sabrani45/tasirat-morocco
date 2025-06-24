@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسعيرة المغرب - دليلك لأسعار المنتجات</title>
+    <link href="style.css" rel="stylesheet" type="text/css" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script type="module">
+        // استيراد Firebase من CDN
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
+        import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, doc, setDoc } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js';
+        import { getAnalytics } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics.js';
+
+        // إعدادات Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDwsZYX5pJzG90QJAuucOmBhI-SVLJQEso",
+            authDomain: "tasirat-morocco.firebaseapp.com",
+            projectId: "tasirat-morocco",
+            storageBucket: "tasirat-morocco.firebasestorage.app",
+            messagingSenderId: "86336976138",
+            appId: "1:86336976138:web:dd395cf1a41519289ef6f3",
+            measurementId: "G-0JT6Y137F7"
+        };
+
+        // تهيئة Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+        const analytics = getAnalytics(app);
+
+        // تصدير الوظائف للاستخدام العام
+        window.firebaseAuth = auth;
+        window.firebaseDB = db;
+        window.firebaseStorage = storage;
+        window.firebaseApp = app;
+        
+        // وظائف المصادقة
+        window.firebaseSignUp = async (email, password, displayName) => {
+            try {
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
+                
+                await setDoc(doc(db, "users", user.uid), {
+                    email: user.email,
+                    displayName: displayName,
+                    createdAt: new Date(),
+                    uid: user.uid
+                });
+                
+                return { success: true, user };
+            } catch (error) {
+                return { success: false, error: error.code };
+            }
+        };
+
+        window.firebaseSignIn = async (email, password) => {
+            try {
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                return { success: true, user: userCredential.user };
+            } catch (error) {
+                return { success: false, error: error.code };
+            }
+        };
+
+        window.firebaseLogout = async () => {
+            try {
+                await signOut(auth);
+                return { success: true };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        // وظائف المنتجات
+        window.firebaseAddProduct = async (productData) => {
+            try {
+                const docRef = await addDoc(collection(db, "products"), {
+                    ...productData,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                });
+                return { success: true, id: docRef.id };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        window.firebaseGetProducts = async () => {
+            try {
+                const querySnapshot = await getDocs(collection(db, "products"));
+                const products = [];
+                querySnapshot.forEach((doc) => {
+                    products.push({ id: doc.id, ...doc.data() });
+                });
+                return { success: true, products };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        window.firebaseGetProductsByCategory = async (category) => {
+            try {
+                const q = query(
+                    collection(db, "products"), 
+                    where("category", "==", category)
+                );
+                const querySnapshot = await getDocs(q);
+                const products = [];
+                querySnapshot.forEach((doc) => {
+                    products.push({ id: doc.id, ...doc.data() });
+                });
+                return { success: true, products };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        // وظائف الطلبات
+        window.firebaseAddOrder = async (orderData) => {
+            try {
+                const docRef = await addDoc(collection(db, "orders"), {
+                    ...orderData,
+                    createdAt: new Date(),
+                    status: 'pending'
+                });
+                return { success: true, id: docRef.id };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        window.firebaseGetUserOrders = async (userId) => {
+            try {
+                const q = query(
+                    collection(db, "orders"), 
+                    where("userId", "==", userId),
+                    orderBy("createdAt", "desc")
+                );
+                const querySnapshot = await getDocs(q);
+                const orders = [];
+                querySnapshot.forEach((doc) => {
+                    orders.push({ id: doc.id, ...doc.data() });
+                });
+                return { success: true, orders };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        // وظائف التخزين
+        window.firebaseUploadImage = async (file, path) => {
+            try {
+                const storageRef = ref(storage, path);
+                const snapshot = await uploadBytes(storageRef, file);
+                const downloadURL = await getDownloadURL(snapshot.ref);
+                return { success: true, url: downloadURL };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        // مراقب حالة المصادقة
+        window.firebaseOnAuthStateChange = (callback) => {
+            return onAuthStateChanged(auth, callback);
+        };
+
+        console.log('🔥 Firebase تم تهيئته بنجاح!');
+        window.dispatchEvent(new Event('firebaseReady'));
+    </script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="logo">
+                    <i class="fas fa-tag"></i>
+                    <span>تسعيرة المغرب</span>
+                </div>
+                <ul class="nav-menu">
+                    <li><a href="#home">الرئيسية</a></li>
+                    <li><a href="#categories">الفئات</a></li>
+                    <li><a href="#compare">مقارنة الأسعار</a></li>
+                    <li><a href="#footer">حولنا</a></li>
+                    <li><a href="#" id="loginBtn" class="login-btn">تسجيل الدخول</a></li>
+                    <li><a href="#" id="userProfile" class="user-profile" style="display: none;">
+                        <i class="fas fa-user"></i>
+                        <span id="userName">مرحباً</span>
+                    </a></li>
+                </ul>
+                <div class="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <div class="moroccan-pattern">✦ ◆ ✦</div>
+            <h1>🇲🇦 اكتشف أفضل الأسعار في المملكة المغربية 🇲🇦</h1>
+            <p>منصتك الموثوقة لمقارنة أسعار المنتجات في أرض الأسود • من الدار البيضاء إلى مراكش</p>
+            <div class="moroccan-divider">
+                <span>◆</span>
+                <span>✦</span>
+                <span>◆</span>
+            </div>
+            <div class="search-container">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="ابحث عن منتج في السوق المغربي..." id="searchInput">
+                    <button class="search-btn">🔍 بحث</button>
+                </div>
+            </div>
+        </div>
+        <div class="hero-bg">
+            <div class="floating-shapes">
+                <div class="shape shape1"></div>
+                <div class="shape shape2"></div>
+                <div class="shape shape3"></div>
+                <div class="moroccan-star star1">✦</div>
+                <div class="moroccan-star star2">◆</div>
+                <div class="moroccan-star star3">✧</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Categories Section -->
+    <section id="categories" class="categories">
+        <div class="container">
+            <h2>فئات المنتجات</h2>
+            <div class="categories-grid">
+                <div class="category-card" data-category="electronics">
+                    <div class="category-icon">
+                        <i class="fas fa-laptop"></i>
+                    </div>
+                    <h3>إلكترونيات</h3>
+                    <p>هواتف، حاسوب، تلفاز</p>
+                </div>
+                <div class="category-card" data-category="fashion">
+                    <div class="category-icon">
+                        <i class="fas fa-tshirt"></i>
+                    </div>
+                    <h3>أزياء</h3>
+                    <p>ملابس، أحذية، إكسسوارات</p>
+                </div>
+                <div class="category-card" data-category="home">
+                    <div class="category-icon">
+                        <i class="fas fa-home"></i>
+                    </div>
+                    <h3>منزل ومطبخ</h3>
+                    <p>أثاث، أجهزة منزلية</p>
+                </div>
+                <div class="category-card" data-category="beauty">
+                    <div class="category-icon">
+                        <i class="fas fa-spa"></i>
+                    </div>
+                    <h3>جمال وعناية</h3>
+                    <p>مستحضرات تجميل، عطور</p>
+                </div>
+                <div class="category-card" data-category="sports">
+                    <div class="category-icon">
+                        <i class="fas fa-dumbbell"></i>
+                    </div>
+                    <h3>رياضة</h3>
+                    <p>معدات رياضية، ملابس</p>
+                </div>
+                <div class="category-card" data-category="books">
+                    <div class="category-icon">
+                        <i class="fas fa-book"></i>
+                    </div>
+                    <h3>كتب وتعليم</h3>
+                    <p>كتب، قرطاسية، دورات</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Products Section -->
+    <section id="products" class="products">
+        <div class="container">
+            <h2>المنتجات الأكثر بحثاً</h2>
+            <div class="products-grid" id="productsGrid">
+                <!-- Products will be dynamically loaded here -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features">
+        <div class="container">
+            <h2>لماذا تختار تسعيرة المغرب؟</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3>مقارنة دقيقة</h3>
+                    <p>نقارن الأسعار من مئات المتاجر المغربية لنوفر لك أفضل العروض</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <h3>تحديث مستمر</h3>
+                    <p>أسعار محدثة بشكل يومي لضمان الحصول على أحدث المعلومات</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h3>موثوق ومضمون</h3>
+                    <p>نتعامل مع متاجر معتمدة وموثوقة في جميع أنحاء المغرب</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="footer" class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <i class="fas fa-tag"></i>
+                        <span>تسعيرة المغرب</span>
+                    </div>
+                    <p>منصتك الموثوقة لمقارنة الأسعار في المغرب</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="https://wa.me/message/BLBYQDE5X2VGB1" target="_blank"><i class="fab fa-whatsapp"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h3>روابط سريعة</h3>
+                    <ul>
+                        <li><a href="#home">الرئيسية</a></li>
+                        <li><a href="#categories">الفئات</a></li>
+                        <li><a href="#footer">حولنا</a></li>
+                        <li><a href="#contact">اتصل بنا</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>المدن</h3>
+                    <ul>
+                        <li><a href="#">الدار البيضاء</a></li>
+                        <li><a href="#">الرباط</a></li>
+                        <li><a href="#">مراكش</a></li>
+                        <li><a href="#">فاس</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>اتصل بنا</h3>
+                    <div class="contact-info">
+                        <p><i class="fas fa-phone"></i> +212 645-994933</p>
+                        <p><i class="fas fa-envelope"></i> info@tasirat-morocco.com</p>
+                        <p><i class="fas fa-map-marker-alt"></i> المغرب</p>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <div class="moroccan-greeting">
+                    <span>✦ أهلاً وسهلاً بكم في المملكة المغربية ✦</span>
+                </div>
+                <p>&copy; 2024 تسعيرة المغرب. جميع الحقوق محفوظة.</p>
+                <p style="font-size: 0.9rem; opacity: 0.8; margin-top: 10px;">
+                    🇲🇦 من الأطلس إلى الصحراء • خدمتكم شرف لنا 🇲🇦
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <div class="login-container">
+                <div class="login-header">
+                    <h2>🇲🇦 مرحباً بك في تسعيرة المغرب 🇲🇦</h2>
+                    <div class="moroccan-divider">
+                        <span>◆</span>
+                        <span>✦</span>
+                        <span>◆</span>
+                    </div>
+                </div>
+
+                <div class="login-tabs">
+                    <button class="tab-btn active" data-tab="login">تسجيل الدخول</button>
+                    <button class="tab-btn" data-tab="register">إنشاء حساب</button>
+                </div>
+
+                <div id="loginTab" class="tab-content active">
+                    <form class="login-form">
+                        <div class="input-group">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" placeholder="البريد الإلكتروني" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" placeholder="كلمة المرور" required>
+                        </div>
+                        <div class="form-options">
+                            <label class="remember-me">
+                                <input type="checkbox">
+                                <span>تذكرني</span>
+                            </label>
+                            <a href="#" class="forgot-password">نسيت كلمة المرور؟</a>
+                        </div>
+                        <button type="submit" class="auth-btn">دخول</button>
+                    </form>
+                </div>
+
+                <div id="registerTab" class="tab-content">
+                    <form class="login-form">
+                        <div class="input-group">
+                            <i class="fas fa-user"></i>
+                            <input type="text" placeholder="الاسم الكامل" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" placeholder="البريد الإلكتروني" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fas fa-phone"></i>
+                            <input type="tel" placeholder="رقم الهاتف" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" placeholder="كلمة المرور" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" placeholder="تأكيد كلمة المرور" required>
+                        </div>
+                        <div class="form-options">
+                            <label class="remember-me">
+                                <input type="checkbox" required>
+                                <span>أوافق على <a href="#">الشروط والأحكام</a></span>
+                            </label>
+                        </div>
+                        <button type="submit" class="auth-btn">إنشاء حساب</button>
+                    </form>
+                </div>
+
+                <div class="social-login">
+                    <div class="divider">
+                        <span>أو</span>
+                    </div>
+                    <div class="social-buttons">
+                        <button class="social-btn google">
+                            <i class="fab fa-google"></i>
+                            الدخول بجوجل
+                        </button>
+                        <button class="social-btn facebook">
+                            <i class="fab fa-facebook-f"></i>
+                            الدخول بفيسبوك
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Purchase Modal -->
+    <div id="purchaseModal" class="modal">
+        <div class="modal-content purchase-modal">
+            <span class="close-btn">&times;</span>
+            <div class="purchase-container">
+                <div class="purchase-header">
+                    <h2>🛒 إتمام عملية الشراء</h2>
+                    <div class="moroccan-divider">
+                        <span>◆</span>
+                        <span>✦</span>
+                        <span>◆</span>
+                    </div>
+                </div>
+
+                <div class="purchase-content">
+                    <div class="order-summary">
+                        <h3>ملخص الطلب</h3>
+                        <div class="product-summary" id="productSummary">
+                            <!-- Product details will be inserted here -->
+                        </div>
+                        <div class="price-breakdown">
+                            <div class="price-row">
+                                <span>سعر المنتج:</span>
+                                <span id="productPrice">0 درهم</span>
+                            </div>
+                            <div class="price-row">
+                                <span>رسوم التوصيل:</span>
+                                <span>30 درهم</span>
+                            </div>
+                            <div class="price-row total">
+                                <span>المجموع الكلي:</span>
+                                <span id="totalPrice">30 درهم</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="payment-section">
+                        <h3>طريقة الدفع</h3>
+                        <div class="payment-methods">
+                            <div class="payment-method" data-method="card">
+                                <input type="radio" name="payment" id="card" checked>
+                                <label for="card">
+                                    <div class="method-info">
+                                        <i class="fas fa-credit-card"></i>
+                                        <span>بطاقة ائتمان</span>
+                                    </div>
+                                    <div class="card-logos">
+                                        <i class="fab fa-cc-visa"></i>
+                                        <i class="fab fa-cc-mastercard"></i>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="payment-method" data-method="paypal">
+                                <input type="radio" name="payment" id="paypal">
+                                <label for="paypal">
+                                    <div class="method-info">
+                                        <i class="fab fa-paypal"></i>
+                                        <span>PayPal</span>
+                                    </div>
+                                    <div class="paypal-logo">
+                                        <i class="fab fa-paypal paypal-icon"></i>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="payment-method" data-method="cash">
+                                <input type="radio" name="payment" id="cash">
+                                <label for="cash">
+                                    <div class="method-info">
+                                        <i class="fas fa-money-bill-wave"></i>
+                                        <span>الدفع عند الاستلام</span>
+                                    </div>
+                                    <div class="cash-icon">
+                                        <i class="fas fa-truck"></i>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="payment-method" data-method="bank">
+                                <input type="radio" name="payment" id="bank">
+                                <label for="bank">
+                                    <div class="method-info">
+                                        <i class="fas fa-university"></i>
+                                        <span>تحويل بنكي</span>
+                                    </div>
+                                    <div class="bank-logos">
+                                        <span>🏦</span>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="payment-method" data-method="mobile">
+                                <input type="radio" name="payment" id="mobile">
+                                <label for="mobile">
+                                    <div class="method-info">
+                                        <i class="fas fa-mobile-alt"></i>
+                                        <span>محفظة إلكترونية</span>
+                                    </div>
+                                    <div class="mobile-logos">
+                                        <span>📱</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="payment-details">
+                            <div id="cardDetails" class="payment-form active">
+                                <div class="card-form">
+                                    <div class="input-group">
+                                        <label>رقم البطاقة</label>
+                                        <input type="text" placeholder="1234 5678 9012 3456" maxlength="19">
+                                        <div class="card-type-indicator">
+                                            <i class="fab fa-cc-visa"></i>
+                                        </div>
+                                    </div>
+                                    <div class="card-row">
+                                        <div class="input-group">
+                                            <label>تاريخ الانتهاء</label>
+                                            <input type="text" placeholder="MM/YY" maxlength="5">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>CVV</label>
+                                            <input type="text" placeholder="123" maxlength="4">
+                                        </div>
+                                    </div>
+                                    <div class="input-group">
+                                        <label>اسم حامل البطاقة</label>
+                                        <input type="text" placeholder="الاسم كما هو مكتوب على البطاقة">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="paypalDetails" class="payment-form">
+                                <div class="paypal-info">
+                                    <i class="fab fa-paypal paypal-large"></i>
+                                    <p>سيتم توجيهك إلى PayPal لإتمام عملية الدفع بشكل آمن</p>
+                                    <div class="paypal-benefits">
+                                        <div class="benefit">
+                                            <i class="fas fa-shield-alt"></i>
+                                            <span>حماية المشتري</span>
+                                        </div>
+                                        <div class="benefit">
+                                            <i class="fas fa-lock"></i>
+                                            <span>دفع آمن</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="cashDetails" class="payment-form">
+                                <div class="cash-info">
+                                    <i class="fas fa-truck delivery-icon"></i>
+                                    <h4>الدفع عند الاستلام</h4>
+                                    <p>ادفع نقداً عند وصول المنتج إليك</p>
+                                    <div class="delivery-options">
+                                        <div class="option">
+                                            <i class="fas fa-clock"></i>
+                                            <span>التوصيل خلال 24-48 ساعة</span>
+                                        </div>
+                                        <div class="option">
+                                            <i class="fas fa-money-bill-wave"></i>
+                                            <span>ادفع بالدرهم المغربي فقط</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="bankDetails" class="payment-form">
+                                <div class="bank-info">
+                                    <i class="fas fa-university bank-icon"></i>
+                                    <h4>التحويل البنكي</h4>
+                                    <div class="bank-details-info">
+                                        <div class="bank-detail">
+                                            <span>اسم البنك:</span>
+                                            <span>البنك الشعبي المغربي</span>
+                                        </div>
+                                        <div class="bank-detail">
+                                            <span>رقم الحساب:</span>
+                                            <span>001122334455667788</span>
+                                        </div>
+                                        <div class="bank-detail">
+                                            <span>الاسم:</span>
+                                            <span>تسعيرة المغرب</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="mobileDetails" class="payment-form">
+                                <div class="mobile-info">
+                                    <i class="fas fa-mobile-alt mobile-icon"></i>
+                                    <h4>المحفظة الإلكترونية</h4>
+                                    <div class="mobile-options">
+                                        <button class="mobile-option">
+                                            <span>💳</span>
+                                            <span>CIH Pay</span>
+                                        </button>
+                                        <button class="mobile-option">
+                                            <span>📱</span>
+                                            <span>Orange Money</span>
+                                        </button>
+                                        <button class="mobile-option">
+                                            <span>💰</span>
+                                            <span>Maroc Telecom Cash</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="shipping-info">
+                            <h3>معلومات التوصيل</h3>
+                            <div class="shipping-form">
+                                <div class="input-group">
+                                    <label>الاسم الكامل</label>
+                                    <input type="text" placeholder="الاسم الكامل للمستلم" required>
+                                </div>
+                                <div class="input-group">
+                                    <label>رقم الهاتف</label>
+                                    <input type="tel" placeholder="+212 6XX XXX XXX" required>
+                                </div>
+                                <div class="input-group">
+                                    <label>العنوان الكامل</label>
+                                    <textarea placeholder="الشارع، الحي، المدينة، الرمز البريدي" required></textarea>
+                                </div>
+                                <div class="city-select">
+                                    <label>المدينة</label>
+                                    <select required>
+                                        <option value="">اختر المدينة</option>
+                                        <option value="casablanca">الدار البيضاء</option>
+                                        <option value="rabat">الرباط</option>
+                                        <option value="marrakech">مراكش</option>
+                                        <option value="fes">فاس</option>
+                                        <option value="tangier">طنجة</option>
+                                        <option value="agadir">أكادير</option>
+                                        <option value="meknes">مكناس</option>
+                                        <option value="oujda">وجدة</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="purchase-actions">
+                            <button type="button" class="cancel-btn">إلغاء</button>
+                            <button type="button" class="purchase-btn">
+                                <i class="fas fa-shopping-cart"></i>
+                                تأكيد الطلب
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
